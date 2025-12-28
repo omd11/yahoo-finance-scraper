@@ -313,9 +313,8 @@ class Ticker():
         "trading_information": trading_information
     }
 
-
-    def get_annual_income_statement(self):
-        response = self.session.get("https://au.finance.yahoo.com/quote/NVDA/financials/")
+    def get_annual_income_statement(self)->pd.DataFrame:
+        response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/financials/")
         soup = bs4.BeautifulSoup(response.content,"lxml")
 
 
@@ -369,9 +368,96 @@ class Ticker():
         else:
             return None
 
+    def get_analysis(self)->tuple[pd.DataFrame,pd.DataFrame,pd.DataFrame,pd.DataFrame,pd.DataFrame,pd.DataFrame,pd.DataFrame]:
+        response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/analysis/")
+        soup = bs4.BeautifulSoup(response.content,"lxml")
+
+        def extract_table_by_header(header_text):
+        # Find the specific section header (e.g., "Earnings Estimate")
+        # Yahoo often uses <h3> or specific classes for section headers.
+        # We search for the text directly in the soup to locate the nearest table.
+            header = soup.find(string=lambda t: t and header_text in t)
+            
+            if header:
+                # Navigate up to find the container, then find the table within it
+                # or find the 'next' table tag after this header.
+                parent = header.find_parent('section') # Analysis tables are often in <section> tags
+                if not parent:
+                    # Fallback: Find the nearest table following this header
+                    table = header.find_next('table')
+                else:
+                    table = parent.find('table')
+                
+                if table:
+                    try:
+                        df_list = pd.read_html(io.StringIO(str(table)))
+                        if df_list:
+                            df = df_list[0]
+                            # Set the first column as index (usually the metric label)
+                            if not df.empty:
+                                df.set_index(df.columns[0], inplace=True)
+                            return df
+                    except ValueError:
+                        pass
+            
+            return pd.DataFrame() # Return empty if not found
+
+    # Extract each specific table
+        df_earnings_est = extract_table_by_header("Earnings estimate")
+        df_revenue_est = extract_table_by_header("Revenue estimate")
+        df_earnings_hist = extract_table_by_header("Earnings history")
+        df_eps_trend = extract_table_by_header("EPS trend")
+        df_eps_revisions = extract_table_by_header("EPS revisions")
+        df_growth_est = extract_table_by_header("Growth estimates")
+
+
+        return (
+            df_earnings_est, 
+            df_revenue_est, 
+            df_earnings_hist, 
+            df_eps_trend, 
+            df_eps_revisions, 
+            df_growth_est
+        )
+
+    def get_holders(self)->tuple[pd.DataFrame,pd.DataFrame,pd.DataFrame]:
+        response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/holders/")
+        soup = bs4.BeautifulSoup(response.content,"lxml")
+
+        tables = soup.find_all("table")
+
+        breakdown = pd.read_html(io.StringIO(str(tables[0])))[0]
+        top_institutional_holders = pd.read_html(io.StringIO(str(tables[1])))[0]
+        top_mutual_fund_holders = pd.read_html(io.StringIO(str(tables[2])))[0]
+
+        return breakdown,top_institutional_holders,top_mutual_fund_holders
+
+    def get_options(self,date):
+        if date % 604800 !=86400 or date < datetime.datetime.now().timestamp():
+            print("invalid time given, defaulting to closest expiration date")
+            response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/options/")
+        else:
+            response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/options/?date={date}/")
+
+        soup = bs4.BeautifulSoup(response.content,"lxml")
+
+        tables = soup.find_all("table")
+
+        with open("options2.html","w", encoding="utf-8") as file:
+            file.write(str(tables))
+
+        calls = pd.read_html(io.StringIO(str(tables[0])))[0]
+        puts = pd.read_html(io.StringIO(str(tables[1])))[0]
+
+        return calls,puts
+
 if __name__=="__main__":
     test = Ticker("AMZN")
+    calls,puts = test.get_options(1767916800)
+    print(calls, "\n", puts)
 
-    print(test.get_annual_income_statement())
+
+
+
 
     
