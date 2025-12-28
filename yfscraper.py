@@ -314,12 +314,64 @@ class Ticker():
     }
 
 
+    def get_annual_income_statement(self):
+        response = self.session.get("https://au.finance.yahoo.com/quote/NVDA/financials/")
+        soup = bs4.BeautifulSoup(response.content,"lxml")
+
+
+        header_row = soup.find('div', class_='row yf-1yyu1pc')
+        
+        columns = []
+
+        if header_row:
+            # Loop through the column divs in the header
+            # The first column is usually 'Breakdown' or blank, subsequent are dates
+            for cell in header_row.find_all('div', class_='column'):
+                text = cell.get_text(strip=True)
+                columns.append(text if text else "Breakdown")
+        else:
+            # Fallback if specific header class isn't found exactly
+            columns = ["Breakdown", "TTM", "Date 1", "Date 2", "Date 3", "Date 4"]
+
+        # 2. Extract Data Rows
+        # We use the specific class provided by the user for the data rows
+        data_rows_html = soup.find_all('div', class_='row lv-0 yf-t22klz')
+        
+        extracted_data = []
+
+        for row in data_rows_html:
+            # Find all individual column cells within the row
+            cells = row.find_all('div', class_='column')
+            
+            # Extract text from each cell
+            row_values = [cell.get_text(strip=True) for cell in cells]
+            
+            # Ensure the row has data before adding
+            if row_values:
+                extracted_data.append(row_values)
+
+        # 3. Create Pandas DataFrame
+        # Ensure columns match data length (handle potential mismatches)
+        if extracted_data:
+            num_cols = len(extracted_data[0])
+            # Truncate or pad headers to match data columns if necessary
+            if len(columns) > num_cols:
+                columns = columns[:num_cols]
+            elif len(columns) < num_cols:
+                columns += [f"Col_{i}" for i in range(len(columns), num_cols)]
+                
+            df = pd.DataFrame(extracted_data, columns=columns)
+            
+            # Optional: Set the Breakdown column as the index
+            if "Breakdown" in df.columns:
+                df.set_index("Breakdown", inplace=True)
+            return df
+        else:
+            return None
+
 if __name__=="__main__":
     test = Ticker("AMZN")
-    start = datetime.datetime(2024,12,26,11,8,0)
-    end = datetime.datetime(2025,12,26,11,8,0)
 
-    prices,dividends = test.get_historical_data(start,end,"1d")
-    print(prices)
-    print(dividends)
+    print(test.get_annual_income_statement())
+
     
