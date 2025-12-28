@@ -1,15 +1,18 @@
 import bs4
 import requests
 import re
-
+import datetime
+import io
+import pandas as pd
+from typing import Literal
 
 class Ticker():
     def __init__(self,code):
         self.code = re.sub(r"\^",r"%5E",code)
         
 
-        self. session = requests.session()
-        self. session.headers.update({
+        self.session = requests.session()
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,*/*;q=0.8'
         })
@@ -118,8 +121,42 @@ class Ticker():
 
         return data
 
+    def get_historical_data(self, start:datetime.datetime, end:datetime.datetime, interval: Literal["1d","1wk","1mo"]) -> tuple[pd.DataFrame, pd.DataFrame]:
+        start = start.timestamp()
+        end = end.timestamp()
 
+        url = fr"https://au.finance.yahoo.com/quote/{self.code}/history/?frequency={interval}&period1={start}&period2={end}"
+        response = self.session.get(url)
+        soup = bs4.BeautifulSoup(response.content,"lxml")
+        table = io.StringIO(str(soup.find("table")))
+
+        prices = pd.read_html(table)[0]
+
+        # Seperating dividends from historic prices
+        try:
+            dividends = prices[prices.Open.str.contains("Dividend")]
+            dividends = dividends[["Date","Open"]].copy()
+            dividends.rename(inplace=True, columns={"Open":"Dividend"})
+            dividends['Dividend'] = dividends['Dividend'].astype(str).str.extract(r'(\d+\.?\d*)').astype(float)
+            prices=prices.drop(prices[prices["Open"].str.contains("Dividend")].index)
+        except:
+            dividends = None
+
+        prices.Date = pd.to_datetime(prices.Date,format="mixed")
+        prices.rename(inplace=True,columns={"Close Closing price adjusted for splits.":"Close","Adj Close Adjusted closing price adjusted for splits and dividend and/or capital gain distributions.":"Adj Close"})
+
+        return prices,dividends
+
+
+        
 
 
 if __name__=="__main__":
-    test = Ticker("NVDA")
+    test = Ticker("AMZN")
+    start = datetime.datetime(2024,12,26,11,8,0)
+    end = datetime.datetime(2025,12,26,11,8,0)
+
+    prices,dividends = test.get_historical_data(start,end,"1d")
+    print(prices)
+    print(dividends)
+    
