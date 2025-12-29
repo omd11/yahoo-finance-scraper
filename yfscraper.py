@@ -50,6 +50,9 @@ class Ticker():
             "post_price": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-post-price"})),
             "post_price_change": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-post-price-change"})),
             "post_price_change_percent": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-post-price-change-percent"})),
+            "overnight_price": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-overnight-price"})),
+            "overnight_price_change": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-overnight-price-change"})),
+            "overnight_price_change_percent": get_find_safe(soup.find("span", attrs={"data-testid": "qsp-overnight-price-change-percent"})),
             "close_time": get_text_safe(time_list, 2),
             "after_hours_time": get_text_safe(time_list, 4),
 
@@ -432,7 +435,7 @@ class Ticker():
 
         return breakdown,top_institutional_holders,top_mutual_fund_holders
 
-    def get_options(self,date):
+    def get_options(self,date)->tuple[pd.DataFrame,pd.DataFrame]:
         if date % 604800 !=86400 or date < datetime.datetime.now().timestamp():
             print("invalid time given, defaulting to closest expiration date")
             response = self.session.get(f"https://au.finance.yahoo.com/quote/{self.code}/options/")
@@ -452,9 +455,9 @@ class Ticker():
         return calls,puts
 
 if __name__=="__main__":
-    test = Ticker("AMZN")
-    calls,puts = test.get_options(1767916800)
-    print(calls, "\n", puts)
+    test = Ticker("NVDA")
+    data = test.summary()
+    print(data)
 
 
 
